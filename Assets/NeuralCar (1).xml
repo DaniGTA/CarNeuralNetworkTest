@@ -4,7 +4,7 @@
     <ArrayOfArrayOfDouble>
       <ArrayOfDouble>
         <double>-0.054714322090148926</double>
-        <double>0.62750244140625</double>
+        <double>-0.86278629302978516</double>
         <double>-0.771080493927002</double>
         <double>-0.60452532768249512</double>
         <double>-0.0063191652297973633</double>
@@ -21,7 +21,7 @@
         <double>0.9146115779876709</double>
       </ArrayOfDouble>
       <ArrayOfDouble>
-        <double>0.99263429641723633</double>
+        <double>0.8977043628692627</double>
         <double>-0.17473065853118896</double>
         <double>0.79096364974975586</double>
         <double>-0.21197521686553955</double>
@@ -29,7 +29,7 @@
         <double>-0.24730312824249268</double>
         <double>0.925278902053833</double>
         <double>-0.56962299346923828</double>
-        <double>-0.62941837310791016</double>
+        <double>-0.89923357963562012</double>
         <double>0.30858799815177917</double>
         <double>-0.9624180793762207</double>
         <double>0.54477953910827637</double>
@@ -59,7 +59,7 @@
       <ArrayOfDouble>
         <double>0.21608054637908936</double>
         <double>0.87175631523132324</double>
-        <double>0.0385509729385376</double>
+        <double>-0.98025012016296387</double>
         <double>0.59634184837341309</double>
         <double>0.99543571472167969</double>
         <double>-0.19218409061431885</double>
@@ -95,7 +95,7 @@
       <ArrayOfDouble>
         <double>0.3721904456615448</double>
         <double>-0.22491514682769775</double>
-        <double>0.917290449142456</double>
+        <double>0.30178162455558777</double>
         <double>0.64084148406982422</double>
         <double>-0.54489493370056152</double>
         <double>0.93491506576538086</double>
@@ -103,7 +103,7 @@
         <double>-0.5081331729888916</double>
         <double>-0.90540456771850586</double>
         <double>0.80751729011535645</double>
-        <double>-0.41595757007598877</double>
+        <double>-0.36323583126068115</double>
         <double>-0.24534642696380615</double>
         <double>0.65124869346618652</double>
         <double>-0.98934721946716309</double>
@@ -119,7 +119,7 @@
         <double>0.29905793070793152</double>
         <double>-0.983163595199585</double>
         <double>-0.34486544132232666</double>
-        <double>-0.37523114681243896</double>
+        <double>0.36251518130302429</double>
         <double>0.2985210120677948</double>
         <double>-0.79911994934082031</double>
         <double>0.2455679178237915</double>
@@ -152,7 +152,7 @@
         <double>-0.31829464435577393</double>
         <double>-0.20410406589508057</double>
         <double>0.11395895481109619</double>
-        <double>0.4471423327922821</double>
+        <double>-0.10286581516265869</double>
       </ArrayOfDouble>
       <ArrayOfDouble>
         <double>-0.036065220832824707</double>
@@ -174,7 +174,7 @@
       </ArrayOfDouble>
       <ArrayOfDouble>
         <double>-0.8453369140625</double>
-        <double>-0.31169974803924561</double>
+        <double>0.43065974116325378</double>
         <double>-0.35191142559051514</double>
         <double>0.2771746814250946</double>
       </ArrayOfDouble>
@@ -187,7 +187,7 @@
       <ArrayOfDouble>
         <double>-0.34823286533355713</double>
         <double>0.45828792452812195</double>
-        <double>-0.95277643203735352</double>
+        <double>0.43141648173332214</double>
         <double>0.59148025512695313</double>
       </ArrayOfDouble>
       <ArrayOfDouble>
@@ -203,10 +203,10 @@
         <double>0.58402037620544434</double>
       </ArrayOfDouble>
       <ArrayOfDouble>
-        <double>0.26323911547660828</double>
+        <double>0.57959628105163574</double>
         <double>-0.023574709892272949</double>
         <double>-0.23425972461700439</double>
-        <double>-0.4877084493637085</double>
+        <double>0.34068557620048523</double>
       </ArrayOfDouble>
       <ArrayOfDouble>
         <double>0.56116914749145508</double>
@@ -222,7 +222,7 @@
       </ArrayOfDouble>
       <ArrayOfDouble>
         <double>-0.20332205295562744</double>
-        <double>-0.77675199508666992</double>
+        <double>0.65537476539611816</double>
         <double>-0.35733139514923096</double>
         <double>-0.55639767646789551</double>
       </ArrayOfDouble>
