@@ -64,10 +64,10 @@ namespace AssemblyCSharp
             for (int i = 0; i < aIController.mutationRateStatic; i++)
             {
                 //Debug.Log ("mutating!");
+                Random.InitState(System.DateTime.Now.Millisecond);
                 int mutationLayer = Random.Range(0, weights.Length);
                 int mutationLeft = Random.Range(0, weights[mutationLayer].Length);
                 int mutationRight = Random.Range(0, weights[mutationLayer][mutationLeft].Length);
-
                 weights[mutationLayer][mutationLeft][mutationRight] = getRandomWeight();
             }
             //Debug.Log (mutationLayer + " " + mutationLeft + " " + mutationRight);

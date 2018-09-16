@@ -172,7 +172,7 @@ namespace AssemblyCSharp
                     {
                         networks[i] = new Network(parameters);
                         networks[i].setWeights(loadedWeightsValues.weights);
-                        networks[i] = new Network(this,networks[i], new Network(parameters));
+                        networks[i] = new Network(this,networks[i]);
                     }
 
                 }
@@ -640,7 +640,7 @@ namespace AssemblyCSharp
                             lastBest = networks[maxIndex];
                             cache.Add(lastBest);
                         }
-                        cache.Add(bestNetwork);
+
                         networkUpdateParameter = cache.ToArray();
                         UpdateNetwork(networkUpdateParameter);
                         
@@ -672,7 +672,8 @@ namespace AssemblyCSharp
         }
 
         void UpdateNetwork(Network[] _networks) {
-            networks[0] = new Network(this, networks);
+            
+            networks[0] = new Network(this, bestNetwork);
             for (int i = 0; i < NetworkUpdateSpeed; i++)
             {
                 if (networkUpdateStatus < population+1)
@@ -684,6 +685,8 @@ namespace AssemblyCSharp
                 }
                 else
                 {
+                    Array.Resize<Network>(ref _networks, _networks.Length + 1);
+                    _networks[_networks.Length] = networks[networkUpdateStatus];
                     points[networkUpdateStatus] = 0;
                     //creating new generation of networks with random combinations of genes from two best parents
                     networks[networkUpdateStatus] = new Network(this, _networks);
