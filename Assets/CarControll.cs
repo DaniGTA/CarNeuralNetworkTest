@@ -15,8 +15,7 @@ public class CarControll : MonoBehaviour {
 		var z = Input.GetAxis("Vertical") * Time.deltaTime * 3.0f;
 
 		transform.Rotate(0, x *-1, 0);
-		transform.Translate(0, 0, z);
-	}
+    }
 	void OnCollisionEnter (Collision col)
 	{
 		print ("Hit!");

@@ -5,6 +5,8 @@ using System;
 using System.Runtime.Serialization.Formatters.Binary;
 using System.IO;
 using System.Xml.Serialization;
+using System.Threading;
+
 namespace AssemblyCSharp
 {
     public enum FitnessMeasure
@@ -12,345 +14,825 @@ namespace AssemblyCSharp
         distance,
         distance2byTime,
         distanceByTime,
-        speed
+        speed,
+        streetParts,
+        points
     }
 
     public class AIController : MonoBehaviour
     {
-
-
-        Rigidbody rigidbody;
-
+        public bool LoadLastNerual = true;
+        public bool newNetworkVersion = false;
         public FitnessMeasure fitnessMeasure;
-
-        float lastSpeed = 0;
-        bool isColliding = true;
-
+        public int NetworkUpdateSpeed = 1;
+        public UnityEngine.Object child;
+        public bool spawnChild = false;
+        public bool childRespawnAtParent = true;
+        public bool ignoreFirstCollide = false;
         public int timeScale;
 
-        public int population = 10;
-        public static int staticPopulation;
+        public float maxSpeed = 1.5f;
+        public int population = 20;
+        public float timeLimit = 20;
 
-        public double driveTime = 0;
-        public double driveDistance = 0;
         public float frontForce, backForce, leftForce, rightForce;
 
-        public static int mutationRateStatic;
+        public int mutationRateStatic;
         public int mutationRate;
-        public static int generation = 0;
+        public int generation = 0;
         public double[] points;
         public double[] results;
         public double[] sensors;
+
         [Header("Sensor Settings")]
-        public float sensoreLength = 3f;
-        public float frontSensorPosition = 0.5f;
+        public float sensoreLength = 5f;
+        public float frontSensorPosition = 0f;
         public float frontSideSensorPosition = 0.2f;
         public float frontSesnorAngle = 0.5f;
+        public float senoreHight = 0f;
 
-        public static int currentNeuralNetwork = 0;
 
-        public static float bestDistance = 0;
+        [Header("Read only")]
+        public NeuralChildObject stats;
 
-        public bool ignoreFirstCollide = true;
+        public float bestDistance = 0;
+        public Network bestNetwork;
+        bool saveBestNetwork = false;
+        public double bestScore;
+        [SerializeField] public NeuralChildObject bestStats;
+        public float time = 0f;
+        public float speed = 0f;
+        int id = 0;
+        bool ignoreCollide = false;
+        public int childs = 0;
+        public int deadChilds = 0;
+        GameObject[] gameObjectsChilds;
         
         //layers (input, hidden, output)
-        int[] parameters = { 7, 16, 4 };
+        public int[] parameters = { 10,16,32,16,6};
 
         Network[] networks;
+        Network lastBest = null;
+        NeuralNetwork.NetworkModels.Network newNetworks;
         RaycastHit hit;
 
-        Vector3 position;
-        Vector3 lastPosition;
+        int networkUpdateStatus = 0;
+        Network[] networkUpdateParameter;
+
+        Quaternion startRotation;
         Vector3 startPosition;
+
+        GameObject childFolder;
+       
 
         void mutationUpdate()
         {
-            mutationRateStatic = mutationRate;
-            //Debug.Log ("updated!");
+            if (mutationRateStatic != mutationRate)
+            {
+                mutationRateStatic = mutationRate;
+                if (newNetworkVersion)
+                {
+                    newNetworks.LearnRate = mutationRate;
+                }
+                Debug.Log("[" + transform.root.gameObject.name + "] Mutation updated!");
+            }
         }
 
         // Use this for initialization
         void Start()
         {
+            childFolder = new GameObject();
+            childFolder.name = "[" + transform.root.gameObject.name + "] Childs";
+            stats = new NeuralChildObject();
             InvokeRepeating("mutationUpdate", 1, 1);
             startPosition = transform.position;
-            lastPosition = startPosition;
-            
-            staticPopulation = population;
+            startRotation = transform.rotation;
+            stats.LastPosition = startPosition;
 
-            Time.timeScale = timeScale;
+            ignoreCollide = ignoreFirstCollide;
 
             Debug.Log("[" + transform.root.gameObject.name + "] Generation " + generation);
 
-            rigidbody = GetComponent<Rigidbody>();
-
-            results = new double[5];
+            results = new double[4];
             points = new double[population];
-            sensors = new double[7];
+            sensors = new double[10];
 
-
-
-
-            position = transform.position;
             networks = new Network[population];
-
-
-            for (int i = 0; i < population; i++)
+            newNetworks = new NeuralNetwork.NetworkModels.Network(parameters[0], new int[] { 8, 8, 8 }, 4, 2,1);
+            gameObjectsChilds = new GameObject[population];
+            gameObjectsChilds[0] = this.gameObject;
+            NeuralWeights loadedWeightsValues = null;
+            if (LoadLastNerual)
             {
-                networks[i] = new Network(parameters);
                 string m_Path = Application.dataPath + "/" + transform.root.gameObject.name + ".xml";
                 print(m_Path);
-                var loadedWeights = Load(m_Path);
-                if (loadedWeights != null)
+                loadedWeightsValues = Load(m_Path);
+                if (loadedWeightsValues != null)
                 {
-                    networks[i].setWeights(loadedWeights);
-                    print("["+transform.root.gameObject.name + "] LoadedWeights");
+                    bestScore = loadedWeightsValues.bestScore;
+                    generation = loadedWeightsValues.Generation;
+                    print("[" + transform.root.gameObject.name + "] LoadedWeights");
+                }
+            }
+
+            if (newNetworkVersion)
+            {
+                if(loadedWeightsValues != null)
+                {
+                    newNetworks.HiddenLayers = loadedWeightsValues.HiddenLayers;
+                    newNetworks.InputLayer = loadedWeightsValues.InputLayer;
+                    newNetworks.OutputLayer = loadedWeightsValues.OutputLayer;
+
+                }
+                for (int i = 1; i < population; i++)
+                {
+                    //Spawn childs if wanted and can
+                    if (spawnChild && child != null)
+                    {
+                        SpawnChild();
+                    }
+                }
+            }
+            else
+            {
+                networks[0] = new Network(parameters);
+
+                for (int i = 1; i < population; i++)
+                {
+                    //Spawn childs if wanted and can
+                    if (spawnChild && child != null)
+                    {
+                        SpawnChild();
+                    }
+                    if (loadedWeightsValues == null)
+                    {
+                        networks[i] = new Network(parameters);
+                    }
+                    else
+                    {
+                        networks[i] = new Network(parameters);
+                        networks[i].setWeights(loadedWeightsValues.weights);
+                        networks[i] = new Network(this,networks[i], new Network(parameters));
+                    }
+
                 }
             }
         }
 
+        public void Sensores(GameObject gameObject = null) {
 
-        void FixedUpdate()
-        {
-            Sensores();
-        }
 
-        void Sensores() {
+            if (gameObject == null)
+            {
+                gameObject = this.gameObject;
+            }
+            NeuralChildObject _stats = GetStats(gameObject);
+            Rigidbody rigidbody = gameObject.GetComponent<Rigidbody>();
+
             RaycastHit hit;
-            Vector3 sensorStartPos = transform.position;
-            sensorStartPos.z += frontSensorPosition;
+            Vector3 sensorStartPos = gameObject.transform.position+(gameObject.transform.TransformDirection(Vector3.forward) * frontSensorPosition);
+            sensorStartPos.y = senoreHight;
+
+            sensors[0] = rigidbody.velocity.magnitude;
+
+            int layerMask = ~(1 << LayerMask.NameToLayer("Car"));
             //front center
-            if (Physics.Raycast(sensorStartPos, transform.forward, out hit, sensoreLength)) {
-
-            }
-
-            //front right angle sensor
-            sensorStartPos.x += frontSensorPosition;
-            if (Physics.Raycast(sensorStartPos, Quaternion.AngleAxis(frontSesnorAngle, transform.up)*transform.forward, out hit, sensoreLength))
+            if (Physics.Raycast(sensorStartPos, gameObject.transform.forward, out hit, sensoreLength, layerMask))
             {
-
+                sensors[1] = hit.distance;
+                Debug.DrawRay(sensorStartPos, gameObject.transform.forward * hit.distance, Color.yellow);
             }
-            Debug.DrawLine(sensorStartPos, hit.point);
-
-            //front right
-            sensorStartPos.x += frontSensorPosition;
-            if (Physics.Raycast(sensorStartPos, transform.forward, out hit, sensoreLength))
+            else
             {
-
+                sensors[1] = sensoreLength*4;
+                Debug.DrawRay(sensorStartPos, gameObject.transform.TransformDirection(Vector3.forward)* sensoreLength, Color.white);
             }
-            Debug.DrawLine(sensorStartPos, hit.point);
-
-
-            //front left angle sensor
-            sensorStartPos.x += frontSensorPosition;
-            if (Physics.Raycast(sensorStartPos, Quaternion.AngleAxis(-frontSesnorAngle, transform.up) * transform.forward, out hit, sensoreLength))
+           
+            //left
+            if (Physics.Raycast(sensorStartPos,Quaternion.AngleAxis(-frontSesnorAngle, gameObject.transform.up) * gameObject.transform.forward, out hit, sensoreLength,layerMask))
             {
-
+                sensors[2] = hit.distance;
+                Debug.DrawRay(sensorStartPos, (Quaternion.AngleAxis(-frontSesnorAngle, gameObject.transform.up) * gameObject.transform.forward) * hit.distance, Color.yellow);
             }
-            Debug.DrawLine(sensorStartPos, hit.point);
-
-            //front left
-            sensorStartPos.x += frontSensorPosition;
-            if (Physics.Raycast(sensorStartPos, transform.forward, out hit, sensoreLength))
+            else
             {
-
+                sensors[2] = sensoreLength;
+                Debug.DrawRay(sensorStartPos, (Quaternion.AngleAxis(-frontSesnorAngle, gameObject.transform.up) * gameObject.transform.forward) * sensoreLength);
             }
-            Debug.DrawLine(sensorStartPos, hit.point);
+            
+            //left 2
+            if (Physics.Raycast(sensorStartPos,Quaternion.AngleAxis(-(frontSesnorAngle/2), gameObject.transform.up) * gameObject.transform.forward, out hit, sensoreLength, layerMask))
+            {
+                sensors[3] = hit.distance;
+                Debug.DrawRay(sensorStartPos, (Quaternion.AngleAxis(-(frontSesnorAngle/2), gameObject.transform.up) * gameObject.transform.forward) * hit.distance, Color.yellow);
+            }
+            else
+            {
+                sensors[3] = sensoreLength;
+                Debug.DrawRay(sensorStartPos, (Quaternion.AngleAxis(-(frontSesnorAngle / 2), gameObject.transform.up) * gameObject.transform.forward) * sensoreLength);
+            }
+            //left 3
+            if (Physics.Raycast(sensorStartPos, Quaternion.AngleAxis(-(frontSesnorAngle * 1.5f), gameObject.transform.up) * gameObject.transform.forward, out hit, sensoreLength, layerMask))
+            {
+                sensors[8] = hit.distance;
+                Debug.DrawRay(sensorStartPos, (Quaternion.AngleAxis(-(frontSesnorAngle * 1.5f), gameObject.transform.up) * gameObject.transform.forward) * hit.distance, Color.yellow);
+            }
+            else
+            {
+                sensors[8] = sensoreLength;
+                Debug.DrawRay(sensorStartPos, (Quaternion.AngleAxis(-(frontSesnorAngle * 1.5f), gameObject.transform.up) * gameObject.transform.forward) * sensoreLength);
+            }
+
+            //right
+            if (Physics.Raycast(sensorStartPos, Quaternion.AngleAxis(frontSesnorAngle, gameObject.transform.up) * gameObject.transform.forward, out hit, sensoreLength, layerMask))
+            {
+                
+                sensors[4] = hit.distance;
+                Debug.DrawRay(sensorStartPos, (Quaternion.AngleAxis(frontSesnorAngle, gameObject.transform.up) * gameObject.transform.forward) * hit.distance, Color.yellow);
+            }
+            else
+            {
+                sensors[4] = sensoreLength;
+                Debug.DrawRay(sensorStartPos, (Quaternion.AngleAxis(frontSesnorAngle, gameObject.transform.up) * gameObject.transform.forward) * sensoreLength);
+            }
+
+            //right 2
+            if (Physics.Raycast(sensorStartPos, Quaternion.AngleAxis((frontSesnorAngle / 2), gameObject.transform.up) * gameObject.transform.forward, out hit, sensoreLength, layerMask))
+            {
+                sensors[5] = hit.distance;
+                Debug.DrawRay(sensorStartPos, (Quaternion.AngleAxis((frontSesnorAngle / 2), gameObject.transform.up) * gameObject.transform.forward) * hit.distance, Color.yellow);
+            }
+            else
+            {
+                sensors[5] = sensoreLength;
+                Debug.DrawRay(sensorStartPos, (Quaternion.AngleAxis((frontSesnorAngle / 2), gameObject.transform.up) * gameObject.transform.forward) * sensoreLength);
+            }
+            //right 2
+            if (Physics.Raycast(sensorStartPos, Quaternion.AngleAxis((frontSesnorAngle * 1.5f), gameObject.transform.up) * gameObject.transform.forward, out hit, sensoreLength, layerMask))
+            {
+                sensors[9] = hit.distance;
+                Debug.DrawRay(sensorStartPos, (Quaternion.AngleAxis((frontSesnorAngle * 1.5f), gameObject.transform.up) * gameObject.transform.forward) * hit.distance, Color.yellow);
+            }
+            else
+            {
+                sensors[9] = sensoreLength;
+                Debug.DrawRay(sensorStartPos, (Quaternion.AngleAxis((frontSesnorAngle * 1.5f), gameObject.transform.up) * gameObject.transform.forward) * sensoreLength);
+            }
+
+            //backward
+            sensorStartPos = sensorStartPos - ((gameObject.transform.TransformDirection(Vector3.forward) * frontSensorPosition) * 2);
+            if (Physics.Raycast(sensorStartPos, gameObject.transform.forward*-1, out hit, (sensoreLength /2), layerMask))
+            {
+                sensors[6] = hit.distance;
+                Debug.DrawRay(sensorStartPos, gameObject.transform.forward * -1 * hit.distance, Color.yellow);
+            }
+            else
+            {
+                sensors[6] = sensoreLength/2;
+                Debug.DrawRay(sensorStartPos, gameObject.transform.TransformDirection(Vector3.forward * -1) * (sensoreLength /2), Color.white);
+            }
+            sensors[7] = _stats.Speed;
         }
 
         // Update is called once per frame
         void Update()
         {
-
-            driveDistance += (Math.Abs(lastPosition.x - transform.position.x) + Math.Abs(lastPosition.y - transform.position.y) + Math.Abs(lastPosition.z - transform.position.z)) / 4;
-            lastPosition = transform.position;
-            driveTime += Time.deltaTime;
-
-            isColliding = false;
-
-
-            if (transform.position.y > 5)
-                OnCollisionEnter(null);
-
-
-
-            //20 should be maximum force
-            sensors[0] = transform.position.y / 5.0f;
-
-
-                sensors[1] = transform.eulerAngles.x / 45.0f;
-                sensors[2] = -(transform.eulerAngles.x - 360) / 45.0f;
-                sensors[3] = transform.position.x * 2500000;
-                sensors[4] = -(transform.position.x * 2500000);
-                sensors[5] = transform.eulerAngles.x / 90.0f;
-                sensors[6] = -(transform.eulerAngles.x - 360) / 90.0f;
-
-
-            try
-            {
-                results = networks[currentNeuralNetwork].process(sensors);
-            }
-            catch (Exception e) {
-                if (currentNeuralNetwork != 0)
+                Time.timeScale = timeScale;
+                if (!stats.Dead)
                 {
-                    try
-                    {
-                        networks[currentNeuralNetwork] = networks[currentNeuralNetwork - 1];
-                    }
-                    catch (Exception ex)
-                    {
-                        networks[currentNeuralNetwork] = new Network(parameters);
-                    }
-
+                    UpdateCar(this.gameObject);
                 }
                 else
                 {
-                    networks[currentNeuralNetwork] = new Network(parameters);
+
+                    time = Time.time - stats.DriveTime;
+                    if (timeLimit != 0)
+                    {
+                        if (time > timeLimit)
+                        {
+                            GameOver(gameObject, null, true);
+                        }
+                    }
+
+                    transform.Rotate(0, 0, 0);
+                    transform.Translate(0, 0, 0);
                 }
-                results = networks[currentNeuralNetwork].process(sensors);
+            
+        }
+        /// <summary>
+        /// Spawns childs too process all population at the same time
+        /// </summary>
+        void SpawnChild()
+        {
+            
+            childs++;
+            if (childs < population)
+            {
+                GameObject newChild = Instantiate(child) as GameObject;
+                
+                //set position and rotation right
+                newChild.transform.position = startPosition;
+                newChild.transform.rotation = startRotation;
+                newChild.transform.parent = childFolder.transform;
+                NeuralChild childScript = newChild.GetComponent<NeuralChild>();
+                childScript.id = childs;
+                childScript.parent = this.gameObject;
+                gameObjectsChilds[childs] = newChild;
+            }
+        }
+
+        /// <summary>
+        /// Get stats from the gameObject
+        /// </summary>
+        /// <param name="gameObject"></param>
+        /// <returns></returns>
+        NeuralChildObject GetStats(GameObject gameObject)
+        {
+            NeuralChild childScript = gameObject.GetComponent<NeuralChild>();
+            NeuralChildObject _stats = new NeuralChildObject();
+            if (childScript != null)
+            {
+                _stats = childScript.stats;
+            }
+            else
+            {
+                _stats = stats;
+            }
+            return _stats;
+        }
+
+        /// <summary>
+        /// Sets stats for the gameObject
+        /// </summary>
+        /// <param name="gameObject"></param>
+        /// <param name="neuralChildObject"></param>
+        void SetStats(GameObject gameObject,NeuralChildObject neuralChildObject)
+        {
+            NeuralChild childScript = gameObject.GetComponent<NeuralChild>();
+            if (childScript != null)
+            {
+              childScript.stats = neuralChildObject;
+            }
+            else
+            {
+                stats= neuralChildObject;
+            }
+
+        }
+
+        /// <summary>
+        /// Points and Movement.
+        /// </summary>
+        /// <param name="gameObject"></param>
+        /// <param name="id"></param>
+        public void UpdateCar(GameObject gameObject)
+        {
+            Rigidbody rigidbody = gameObject.GetComponent<Rigidbody>();
+            
+            rigidbody.velocity = Vector3.zero;
+            rigidbody.angularVelocity = new Vector3(0, 0, 0);
+
+            Sensores(gameObject);
+            mutationUpdate();
+
+            //Update stats
+            //Used to create points
+            NeuralChildObject _stats = GetStats(gameObject);
+            time = Time.time - _stats.DriveTime;
+            if (timeLimit != 0)
+            {
+                if (time > timeLimit)
+                {
+                    GameOver(gameObject,null,true);
+                }
+            }
+
+            if (_stats.AverageSpeed == 0)
+            {
+            _stats.AverageSpeed = rigidbody.velocity.magnitude;
+            }
+            else
+            {
+            _stats.AverageSpeed = (_stats.AverageSpeed + rigidbody.velocity.magnitude) / 2;
+            }
+
+            //End Update stats
+            if (newNetworkVersion)
+            {
+                try
+                {
+                    results = newNetworks.Compute(sensors);
+                }
+                catch (Exception)
+                {
+                    newNetworks = new NeuralNetwork.NetworkModels.Network(parameters[0], new int[] { 8, 8, 8 }, 4, 2, 1);
+                }
+            }
+            else
+            {
+                try
+                {
+                    results = networks[_stats.Id].process(sensors);
+                }
+                catch (Exception)
+                {
+                    networks[_stats.Id] = new Network(parameters);
+                    results = networks[_stats.Id].process(sensors);
+                }
             }
 
             frontForce = (float)results[0];
             backForce = (float)results[1];
             leftForce = (float)results[2];
-            rightForce = (float)results[3];
-            //front.AddRelativeForce(new Vector3(0, frontForce));
-            //right.AddRelativeForce(new Vector3(0, rightForce));
-            //left.AddRelativeForce(new Vector3(0, leftForce));
-            //back.AddRelativeForce(new Vector3(0, backForce));
-            float speed = (frontForce / 4) - (backForce / 4);
-            if (lastSpeed == speed)
-            {
+            leftForce += (float)results[3];
+            rightForce = (float)results[4];
+            rightForce += (float)results[5];
 
-            }
-            else
+            if (frontForce >= maxSpeed)
             {
-                lastSpeed = speed;
+                frontForce = maxSpeed;
+            }
+            if (backForce >= maxSpeed)
+            {
+                backForce = maxSpeed;
             }
 
-            transform.Rotate(0, ((leftForce / 8) - (rightForce / 8)), 0);
-            transform.Translate(0, 0, speed);
+            _stats.Speed += (frontForce/14);
+            _stats.Speed -= (backForce/8)/ (_stats.Speed*16);
+            speed = _stats.Speed;
+            if (_stats.Speed <= -maxSpeed)
+            {
+                _stats.Speed = -maxSpeed;
+            }
+            else if (_stats.Speed >= maxSpeed)
+            {
+                _stats.Speed = maxSpeed;
+            }
 
+            _stats.DriveDistance = Vector3.Distance(gameObject.transform.position, startPosition);
+            
+            _stats.LastPosition = gameObject.transform.position;
+
+            gameObject.transform.Rotate(0, (leftForce - rightForce)*2, 0);
+
+            gameObject.transform.Translate(0, 0, _stats.Speed);
+
+            //gameObject.transform.position = Vector3.Lerp(gameObject.transform.position, new Vector3(0,0, _stats.speed), 0.5f * Time.deltaTime);
+            _stats.SenoreHistory.Add(sensors);
+            _stats.ResultHistory.Add(results);
+            SetStats(gameObject, _stats);
+            if (ignoreCollide)
+                ignoreCollide = false;
         }
-
 
         //game over, friend :/
         void OnCollisionEnter(Collision col)
         {
+            if (!stats.Dead)
+            {
+                GameOver(this.gameObject, col);
+            }
+        }
+
+        public void GameOver(GameObject gameObject, Collision col = null,bool timeOver=false) {
             try
             {
-                if (col.collider.gameObject.name == "Reifen" || col.collider.gameObject.tag == "Street") return;
+                NeuralChildObject _stats = GetStats(gameObject);
+
+                if (col == null && !timeOver)
+                {
+                    return;
+                }
+
+                try
+                {
+                    if (col.collider.gameObject.tag == "Point")
+                    {
+                        if (!_stats.Points.Contains(col.collider.gameObject))
+                        {
+                            _stats.Points.Add(col.collider.gameObject);
+                        }
+                        return;
+                    }
+                    if (col.collider.gameObject.tag == "Street")
+                    {
+                        if (!_stats.Streets.Contains(col.collider.gameObject))
+                        {
+                            _stats.Streets.Add(col.collider.gameObject);
+                        }
+                        return;
+                    }
+                    if (col.gameObject.tag == "Car") return;
+                }
+                catch (Exception) { }
+
+                if (ignoreCollide) return;
+
+                bool reproduce = false;
+
+                if ((_stats.Dead == false) || timeOver)
+                {
+                    ReadPoints(_stats);
+                    try
+                    {
+                        _stats.ResultHistory.Remove(_stats.ResultHistory[_stats.ResultHistory.Count - 1]);
+                        _stats.SenoreHistory.Remove(_stats.SenoreHistory[_stats.SenoreHistory.Count - 1]);
+                    }
+                    catch (Exception) { }
+                    if (spawnChild && child != null)
+                    {
+                        deadChilds++;
+                        if (!timeOver && newNetworkVersion)
+                        {
+                            while (newNetworks.Compute(sensors) == results)
+                            {
+                                newNetworks.BackPropagate(results);
+                                newNetworks.BackPropagate(results);
+                            }
+                        }
+                        _stats.Dead = true;
+                        SetStats(gameObject, _stats);
+                        if (deadChilds >= childs+1)
+                        {
+                            if (timeOver)
+                            {
+                                print("[" + transform.root.gameObject.name + "][ResetReason] TimeOver");
+                                //get stats of living childs
+                                foreach (GameObject childgo in gameObjectsChilds)
+                                {
+                                    if (childgo != null)
+                                    {
+                                        _stats = GetStats(childgo);
+                                        ReadPoints(_stats);
+                                    }
+                                }
+                            }
+                            else
+                            {
+                                print("[" + transform.root.gameObject.name + "][ResetReason] All childs dead");
+                            }
+                            reproduce = true;
+                        }
+                    }
+                    else
+                    {
+                        if (id > population)
+                        {
+                            reproduce = true;
+                        }
+                        else
+                        {
+                            id++;
+                            print("[" + transform.root.gameObject.name + "][ResetReason] Car dead");
+                            ResetCarPosition(gameObject);
+                        }
+                    }
+                }
+                else
+                {
+                    _stats.Dead = true;
+                    SetStats(gameObject, _stats);
+                    return;
+                }
+                //now we reproduce
+                if (reproduce)
+                {
+                    double maxValue = points[0];
+                    int maxIndex = 0;
+                    List<Network> cache = new List<Network>();
+                    //looking for the two best networks in the generation
+                    for (int i = 1; i < population; i++)
+                    {
+                        if (points[i] > maxValue)
+                        {
+                            maxIndex = i;
+                            maxValue = points[i];
+                        }
+                    }
+
+                    if (newNetworkVersion)
+                    {
+                        for (int i = 0; i < _stats.ResultHistory.Count; i++)
+                        {
+                            newNetworks.ForwardPropagate(_stats.SenoreHistory[i]);
+                        }
+
+                        for (int i = 0; i < population; i++)
+                        {
+                            points[i] = 0;
+                        }
+                    }
+                    else
+                    {
+                        if (points[maxIndex] > bestDistance)
+                        {
+                            bestDistance = (float)points[maxIndex];
+                        }
+                        lastBest = networks[maxIndex];
+
+                        if (bestNetwork == null)
+                        {
+                            bestNetwork = networks[0];
+                        }
+                        cache.Add(lastBest);
+                        if (maxValue != 0)
+                        {
+                            lastBest = networks[maxIndex];
+                            cache.Add(lastBest);
+                        }
+                        cache.Add(bestNetwork);
+                        networkUpdateParameter = cache.ToArray();
+                        UpdateNetwork(networkUpdateParameter);
+                        
+                    }
+                }
             }
-            catch (Exception e) { }
-            if (isColliding) return;
-            isColliding = true;
+            catch (Exception e)
+            {
+                print(e.StackTrace);
+            }
+            return;
+        }
+        void NextGen()
+        {
+            generation++;
+            id = 0;
 
-            resetCarPosition();
+            if (saveBestNetwork)
+            {
+                SaveBestNetwork();
+            }
 
+            deadChilds = 0;
+            if (spawnChild && child != null)
+            {
+                ReviveChilds();
+            }
+            Debug.Log("[" + transform.root.gameObject.name + "] generation " + generation + " is born");
+        }
+
+        void UpdateNetwork(Network[] _networks) {
+            networks[0] = new Network(this, networks);
+            for (int i = 0; i < NetworkUpdateSpeed; i++)
+            {
+                if (networkUpdateStatus < population+1)
+                {
+                    NextGen();
+                    networkUpdateStatus = 0;
+                   
+                    return;
+                }
+                else
+                {
+                    points[networkUpdateStatus] = 0;
+                    //creating new generation of networks with random combinations of genes from two best parents
+                    networks[networkUpdateStatus] = new Network(this, _networks);
+                    networkUpdateStatus++;
+                }
+            }
+        }
+
+        void ReadPoints(NeuralChildObject _stats)
+        {
+            float score = 0;
             switch (fitnessMeasure)
             {
                 case FitnessMeasure.distance:
-                    points[currentNeuralNetwork] = driveDistance;
+                    score = _stats.DriveDistance;
                     break;
                 case FitnessMeasure.distanceByTime:
-                    points[currentNeuralNetwork] = driveTime;
+                    score = _stats.DriveTime;
                     break;
                 case FitnessMeasure.distance2byTime:
-                    points[currentNeuralNetwork] = driveTime + driveDistance;
+                    score = _stats.DriveTime + _stats.DriveDistance;
                     break;
                 case FitnessMeasure.speed:
-                    points[currentNeuralNetwork] = driveDistance/ driveTime;
+                    score = _stats.AverageSpeed;
+                    break;
+                case FitnessMeasure.streetParts:
+                    score = _stats.Streets.Count;
+                    break;
+                case FitnessMeasure.points:
+                    score = _stats.Points.Count;
                     break;
             }
-
-
-            driveDistance = 0;
-            driveTime = 0;
-
-            //Debug.Log("network " + currentNeuralNetwork + " scored " + points[currentNeuralNetwork]);
-
-            string m_Path = Application.dataPath + "/" + transform.root.gameObject.name + ".xml";
-            SaveWeights(m_Path);
-
-            //now we reproduce
-            if (currentNeuralNetwork == population - 1)
+            points[_stats.Id] = score;
+            if(bestScore < score)
             {
-                double maxValue = points[0];
-                int maxIndex = 0;
+                saveBestNetwork = true;
+                bestScore = score;
+                bestNetwork = networks[_stats.Id];
+                bestStats = _stats;
+                SetColor(gameObjectsChilds[_stats.Id], Color.green);
 
-                //looking for the two best networks in the generation
-
-                for (int i = 1; i < population; i++)
-                {
-                    if (points[i] > maxValue)
+                    if (newNetworkVersion)
                     {
-                        maxIndex = i;
-                        maxValue = points[i];
+                        List<NeuralNetwork.NetworkModels.DataSet> dataSets = new List<NeuralNetwork.NetworkModels.DataSet>();
+                        for (int i = 0; i < _stats.ResultHistory.Count; i++)
+                        {
+                            dataSets.Add(new NeuralNetwork.NetworkModels.DataSet(_stats.SenoreHistory[i], _stats.ResultHistory[i]));
+                        }
+                        newNetworks.Train(dataSets, 0.5);
+                    }
+            }
+        }
+
+        void SaveBestNetwork()
+        {
+            try
+            {
+                string m_Path = Application.dataPath + "/" + transform.root.gameObject.name + ".xml";
+                NeuralWeights neuralWeights = new NeuralWeights();
+                neuralWeights.bestScore = (float)bestScore;
+                neuralWeights.Generation = generation;
+                //Save this Network
+                if (!newNetworkVersion)
+                {
+                    neuralWeights.weights = networks[0].getWeigths();
+                    
+                }
+                else
+                {
+                    neuralWeights.HiddenLayers = newNetworks.HiddenLayers;
+                    neuralWeights.InputLayer = newNetworks.InputLayer;
+                    neuralWeights.OutputLayer = newNetworks.OutputLayer;
+                }
+                SaveWeights(m_Path, neuralWeights);
+            }
+            catch (Exception)
+            {
+                print("[" + transform.root.gameObject.name + "] Save error");
+            }
+        }
+
+        void ReviveChilds()
+        {
+            foreach(GameObject childgo in gameObjectsChilds)
+            {
+                if(childgo != null)
+                {
+                    NeuralChild childScript = childgo.GetComponent<NeuralChild>();
+                    if (childScript != null)
+                    {
+                        childScript.Revive();
+                    }
+                    else
+                    {
+                        ResetCarPosition(this.gameObject);
+                        stats.Dead = false;
                     }
                 }
+            }
+        }
 
+        void SetColor(GameObject gameObject, Color color)
+        {
 
-                if (points[maxIndex] > bestDistance)
-                {
-
-                    bestDistance = (float)points[maxIndex];
-
-                }
-
-                points[maxIndex] = -10;
-
-                Network mother = networks[maxIndex];
-
-          
-                maxValue = points[0];
-                maxIndex = 0;
-
-                for (int i = 1; i < population; i++)
-                {
-                    if (points[i] > maxValue)
-                    {
-                        maxIndex = i;
-                        maxValue = points[i];
-                    }
-                }
-
-                points[maxIndex] = -10;
-
-                Network father = networks[maxIndex];
-
-
-                for (int i = 0; i < population; i++)
-                {
-                    points[i] = 0;
-                    //creating new generation of networks with random combinations of genes from two best parents
-                    networks[i] = new Network(father, mother);
-                }
-
-                generation++;
-                Debug.Log("[" + transform.root.gameObject.name + "] generation " + generation + " is born");
-
-                //because we increment it at the beginning, that's why -1
-                currentNeuralNetwork = -1;
+            foreach (Renderer r in gameObject.GetComponentsInChildren<Renderer>())
+            {
+                r.material.color = color;
             }
 
-            currentNeuralNetwork++;
-            //position reset is pretty important, don't forget it :*
-            position = transform.position;
         }
 
         //TODO: sometimes the velocity is not reseted.. for some reason
-        void resetCarPosition()
+        public void ResetCarPosition(GameObject gameObject)
         {
+            
+            Rigidbody rigidbody = gameObject.GetComponent<Rigidbody>();
+
+            NeuralChildObject _stats = GetStats(gameObject);
+
+            _stats.AverageSpeed = 0;
+            _stats.DriveDistance = 0;
+            _stats.DriveTime = Time.time;
+
+            if (childRespawnAtParent)
+            {
+                gameObject.transform.position = startPosition;
+                _stats.LastPosition = startPosition;
+            }
+            else
+            {
+                gameObject.transform.position = _stats.LastPosition;
+            }
+           
+            _stats.Speed = 0f;
+            _stats.Streets.Clear();
+            _stats.ResultHistory.Clear();
+            _stats.SenoreHistory.Clear();
+
+            SetStats(gameObject, _stats);
+
             rigidbody.velocity = Vector3.zero;
-            transform.position = startPosition;
-            transform.rotation = new Quaternion(0, 0, 0, 0);
             rigidbody.angularVelocity = new Vector3(0, 0, 0);
 
+            gameObject.transform.rotation = startRotation;
+            SetColor(gameObject, Color.white);
         }
-        void SaveWeights(string path)
+
+        void SaveWeights(string path, NeuralWeights neuralWeights)
         {
-            NeuralWeights neuralWeights = new NeuralWeights();
-            neuralWeights.weights = networks[currentNeuralNetwork].getWeigths();
             using (FileStream fs = new FileStream(path, FileMode.Create))
             {
                 XmlSerializer xSer = new XmlSerializer(typeof(NeuralWeights));
@@ -358,17 +840,21 @@ namespace AssemblyCSharp
                 xSer.Serialize(fs, neuralWeights);
             }
         }
-        public double[][][] Load(string path)
+        public NeuralWeights Load(string path)
         {
-            using (FileStream fs = new FileStream(path, FileMode.Open)) //double check that...
+            try
             {
-                XmlSerializer _xSer = new XmlSerializer(typeof(NeuralWeights));
+                using (FileStream fs = new FileStream(path, FileMode.Open)) //double check that...
+                {
+                    XmlSerializer _xSer = new XmlSerializer(typeof(NeuralWeights));
 
-                return ((NeuralWeights)(_xSer.Deserialize(fs))).weights;
+                    return (NeuralWeights)(_xSer.Deserialize(fs));
+                }
+            }
+            catch (Exception)
+            {
+                return null;
             }
         }
-
-
-
     }
 }
